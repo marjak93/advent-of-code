@@ -89,12 +89,12 @@ if (import.meta.main) {
   const mainTsContent = `import { getInput } from "../../util.ts";
 
 export async function part1() {
-  const input = await getInput();
+  const input = await getInput(import.meta.url);
   console.log("Part 1 not implemented yet.");
 }
 
 export async function part2() {
-  const input = await getInput();
+  const input = await getInput(import.meta.url);
   console.log("Part 2 not implemented yet.");
 }
 `;
