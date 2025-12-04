@@ -1,7 +1,6 @@
 if (import.meta.main) {
-  // Get day from first command line argument
-  const year = 2025;
-  const day = Deno.args[0];
+  const [day, _year] = Deno.args;
+  const year = _year ?? 2025;
 
   if (!day) {
     console.error("Please provide a day number as the first argument.");
@@ -36,12 +35,11 @@ if (import.meta.main) {
   const inputText = await response.text();
 
   // Create directory for the day
-  const dayDir = `src/${day}`;
-  await Deno.mkdir(dayDir, { recursive: true });
+  const dir = `src/${year}/${day}`;
+  await Deno.mkdir(dir, { recursive: true });
 
   //  Write input to input.txt file
-  const inputFilePath = `src/${day}/input.txt`;
-  await Deno.mkdir(`src/${day}`, { recursive: true });
+  const inputFilePath = `${dir}/input.txt`;
   await Deno.writeTextFile(inputFilePath, inputText);
 
   // Create main.ts file with boilerplate code
@@ -51,7 +49,6 @@ if (import.meta.main) {
   // Your code here
 }
 `;
-  await Deno.writeTextFile(`${dayDir}/main.ts`, mainTsContent);
-
-  console.log(`Setup completed for day ${day} in directory ${dayDir}`);
+  await Deno.writeTextFile(`${dir}/main.ts`, mainTsContent);
+  console.log(`Setup completed for day ${day} in directory ${dir}`);
 }
