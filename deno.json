@@ -1,6 +1,6 @@
 {
   "tasks": {
-    "setup-day": "deno run --allow-read --allow-write --allow-env --allow-net --env-file scripts/setup-day.ts",
+    "setup-day": "deno run --allow-read --allow-write --allow-env --allow-net --env-file src/setup-day.ts",
     "dev": "deno run --allow-read --watch src/main.ts",
     "start": "deno run --allow-read src/main.ts"
   },

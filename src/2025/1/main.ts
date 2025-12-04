@@ -1,3 +1,5 @@
+import { getInput } from "../../util.ts";
+
 const calculatePassword = (
   input: string,
   mode: "simple" | "advanced"
@@ -61,7 +63,7 @@ const calculatePassword = (
 };
 
 export async function part1() {
-  const input = await getInput();
+  const input = await getInput(import.meta.url);
 
   const result = calculatePassword(input, "simple");
 
@@ -69,13 +71,9 @@ export async function part1() {
 }
 
 export async function part2() {
-  const input = await getInput();
+  const input = await getInput(import.meta.url);
 
   const result = calculatePassword(input, "advanced");
 
   console.log(result);
-}
-
-function getInput() {
-  return Deno.readTextFile(new URL("input.txt", import.meta.url));
 }

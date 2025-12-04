@@ -1,3 +1,5 @@
+import { getInput } from "../../util.ts";
+
 const calculateJoltage = (input: string, n: number) => {
   const banks = input.split("\n");
 
@@ -39,7 +41,7 @@ const calculateJoltage = (input: string, n: number) => {
 };
 
 export async function part1() {
-  const input = await getInput();
+  const input = await getInput(import.meta.url);
 
   const joltage = calculateJoltage(input, 2);
 
@@ -47,13 +49,9 @@ export async function part1() {
 }
 
 export async function part2() {
-  const input = await getInput();
+  const input = await getInput(import.meta.url);
 
   const joltage = calculateJoltage(input, 12);
 
   console.log(joltage);
-}
-
-function getInput() {
-  return Deno.readTextFile(new URL("input.txt", import.meta.url));
 }

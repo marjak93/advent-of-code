@@ -1,3 +1,5 @@
+import { getInput } from "../../util.ts";
+
 const checkValidity = (n: number, mode: "simple" | "advanced"): boolean => {
   const str = n.toString();
   const length = str.length;
@@ -38,7 +40,8 @@ const checkValidity = (n: number, mode: "simple" | "advanced"): boolean => {
 };
 
 export async function part1() {
-  const input = await getInput();
+  const input = await getInput(import.meta.url);
+
   const ranges = input.split(",");
 
   let sum = 0;
@@ -59,7 +62,8 @@ export async function part1() {
 }
 
 export async function part2() {
-  const input = await getInput();
+  const input = await getInput(import.meta.url);
+
   const ranges = input.split(",");
 
   let sum = 0;
@@ -77,8 +81,4 @@ export async function part2() {
   }
 
   console.log(sum);
-}
-
-function getInput() {
-  return Deno.readTextFile(new URL("input.txt", import.meta.url));
 }

@@ -1,3 +1,5 @@
+import { getInput } from "../../util.ts";
+
 type Direction = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
 
 class Cell {
@@ -147,7 +149,7 @@ class Grid {
 }
 
 export async function part1() {
-  const input = await getInput();
+  const input = await getInput(import.meta.url);
   const grid = new Grid(input);
 
   let n = 0;
@@ -164,7 +166,7 @@ export async function part1() {
 }
 
 export async function part2() {
-  const input = await getInput();
+  const input = await getInput(import.meta.url);
   const grid = new Grid(input);
 
   let n = 0;
@@ -181,8 +183,4 @@ export async function part2() {
   }
 
   console.log(n);
-}
-
-function getInput() {
-  return Deno.readTextFile(new URL("input.txt", import.meta.url));
 }
