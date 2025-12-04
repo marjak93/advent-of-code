@@ -5,19 +5,19 @@ const parseArgs = (args: string[]): Map<string, string> => {
     const [key, value] = arg.split("=");
 
     if (!key || !value) {
-      console.error(`Invalid argument: ${arg}. Expected format key=value.`);
+      console.error(`Invalid argument: ${arg}. Usage: --day=NUM [--year=NUM]`);
       Deno.exit(1);
     }
 
     if (!["--day", "--year", "--part"].includes(key)) {
-      console.error(`Unknown argument: ${key}.`);
+      console.error(`Unknown argument: ${key}. Usage: --day=NUM [--year=NUM]`);
       Deno.exit(1);
     }
 
     if (key === "--day") {
       const dayNum = Number(value);
       if (isNaN(dayNum) || dayNum < 1 || dayNum > 12) {
-        console.error(`Invalid day value: ${value}. Must be between 1 and 25.`);
+        console.error(`Invalid day value: ${value}. Must be between 1 and 12.`);
         Deno.exit(1);
       }
     }
@@ -51,11 +51,11 @@ if (import.meta.main) {
   }
 
   // Fetch input from adventofcode.com and create input.txt file
-  const session = Deno.env.get("SESSION_ID");
+  const session = Deno.env.get("AOC_SESSION");
 
   if (!session) {
     console.error(
-      "Please set the SESSION_ID environment variable with your Advent of Code session cookie."
+      "Please set the AOC_SESSION environment variable with your Advent of Code session cookie."
     );
     Deno.exit(1);
   }
