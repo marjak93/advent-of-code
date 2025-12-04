@@ -146,25 +146,27 @@ class Grid {
   }
 }
 
-if (import.meta.main) {
-  const input = await Deno.readTextFile(new URL("input.txt", import.meta.url));
-
+export async function part1() {
+  const input = await getInput();
   const grid = new Grid(input);
 
-  // Part 1
-  // let n = 0;
+  let n = 0;
 
-  // for (const cell of grid.iter()) {
-  //   if (cell.isAccessible()) {
-  //     if (cell.isRoll) {
-  //       n++;
-  //     }
-  //   }
-  // }
+  for (const cell of grid.iter()) {
+    if (cell.isAccessible()) {
+      if (cell.isRoll) {
+        n++;
+      }
+    }
+  }
 
-  // console.log(n);
+  console.log(n);
+}
 
-  // Part 2
+export async function part2() {
+  const input = await getInput();
+  const grid = new Grid(input);
+
   let n = 0;
 
   while (!grid.isDeadlocked()) {
@@ -179,4 +181,8 @@ if (import.meta.main) {
   }
 
   console.log(n);
+}
+
+function getInput() {
+  return Deno.readTextFile(new URL("input.txt", import.meta.url));
 }

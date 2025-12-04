@@ -1,6 +1,4 @@
-if (import.meta.main) {
-  const input = await Deno.readTextFile(new URL("input.txt", import.meta.url));
-
+const calculateJoltage = (input: string, n: number) => {
   const banks = input.split("\n");
 
   const results: number[] = [];
@@ -9,10 +7,6 @@ if (import.meta.main) {
     const batteries = bank.split("").map((j) => +j);
 
     const digits: number[] = [];
-
-    // Part 1 -- n = 2
-    // Part 2 -- n = 12
-    const n = 12;
 
     // Look for the occurance of 9 in the bank that has at least n - i digits after it.
     // If not found, look for 8, then 7, etc.
@@ -41,5 +35,25 @@ if (import.meta.main) {
     results.push(+digits.join(""));
   }
 
-  console.log(results.reduce((a, b) => a + b, 0));
+  return results.reduce((a, b) => a + b, 0);
+};
+
+export async function part1() {
+  const input = await getInput();
+
+  const joltage = calculateJoltage(input, 2);
+
+  console.log(joltage);
+}
+
+export async function part2() {
+  const input = await getInput();
+
+  const joltage = calculateJoltage(input, 12);
+
+  console.log(joltage);
+}
+
+function getInput() {
+  return Deno.readTextFile(new URL("input.txt", import.meta.url));
 }

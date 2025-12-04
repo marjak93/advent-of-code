@@ -1,6 +1,7 @@
-if (import.meta.main) {
-  const input = await Deno.readTextFile(new URL("input.txt", import.meta.url));
-
+const calculatePassword = (
+  input: string,
+  mode: "simple" | "advanced"
+): number => {
   const instructions = input.split("\n").map((line) => line.trim());
 
   /*
@@ -45,7 +46,36 @@ if (import.meta.main) {
       }
     }
 
-    i += k;
-    console.log({ dir, x, a, b, k, i });
+    if (mode === "simple") {
+      if (b === 0) {
+        i += 1;
+      }
+    }
+
+    if (mode === "advanced") {
+      i += k;
+    }
   }
+
+  return i;
+};
+
+export async function part1() {
+  const input = await getInput();
+
+  const result = calculatePassword(input, "simple");
+
+  console.log(result);
+}
+
+export async function part2() {
+  const input = await getInput();
+
+  const result = calculatePassword(input, "advanced");
+
+  console.log(result);
+}
+
+function getInput() {
+  return Deno.readTextFile(new URL("input.txt", import.meta.url));
 }

@@ -1,14 +1,16 @@
-const checkValidity = (n: number): boolean => {
+const checkValidity = (n: number, mode: "simple" | "advanced"): boolean => {
   const str = n.toString();
-
-  // Figure out number of factors of the length of the string. E.g, if length is 6, factors are 1, 2, 3, 6
-  // However, avoid 6 itself, as that would mean checking the whole number against itself.
   const length = str.length;
-  const factors: number[] = [];
 
-  for (let i = 1; i <= Math.floor(length / 2); i++) {
-    if (length % i === 0) {
-      factors.push(i);
+  const factors: Set<number> = new Set([length / 2]);
+
+  if (mode === "advanced") {
+    // Figure out number of factors of the length of the string. E.g, if length is 6, factors are 1, 2, 3, 6
+    // However, avoid 6 itself, as that would mean checking the whole number against itself.
+    for (let i = 1; i <= Math.floor(length / 2); i++) {
+      if (length % i === 0) {
+        factors.add(i);
+      }
     }
   }
 
@@ -35,8 +37,8 @@ const checkValidity = (n: number): boolean => {
   return true;
 };
 
-if (import.meta.main) {
-  const input = await Deno.readTextFile(new URL("input.txt", import.meta.url));
+export async function part1() {
+  const input = await getInput();
   const ranges = input.split(",");
 
   let sum = 0;
@@ -45,7 +47,7 @@ if (import.meta.main) {
     const [start, end] = range.split("-").map((n) => +n);
 
     for (let i = start; i <= end; i++) {
-      const isValid = checkValidity(i);
+      const isValid = checkValidity(i, "simple");
 
       if (!isValid) {
         sum += i;
@@ -54,4 +56,29 @@ if (import.meta.main) {
   }
 
   console.log(sum);
+}
+
+export async function part2() {
+  const input = await getInput();
+  const ranges = input.split(",");
+
+  let sum = 0;
+
+  for (const range of ranges) {
+    const [start, end] = range.split("-").map((n) => +n);
+
+    for (let i = start; i <= end; i++) {
+      const isValid = checkValidity(i, "advanced");
+
+      if (!isValid) {
+        sum += i;
+      }
+    }
+  }
+
+  console.log(sum);
+}
+
+function getInput() {
+  return Deno.readTextFile(new URL("input.txt", import.meta.url));
 }
