@@ -1,203 +1,215 @@
-import { getDebug, getInput } from "../../util.ts";
+import { getInput } from "../../util.ts";
 
-type NodeType = "." | "S" | "|" | "^";
+type Grid = Tile[][];
 
-class Node {
-  constructor(public type: NodeType, public hasSplit: boolean = false) {}
+type Particle = {
+  x: number;
+  y: number;
+  count: number;
+};
+
+type State = {
+  GRID: Grid;
+  PARTICLES: Particle[];
+  SPLIT_COUNT: number;
+  IGNORE_COLLISIONS: boolean;
+};
+
+enum Tile {
+  Air = ".",
+  Splitter = "^",
+  Laser = "|",
+  Emitter = "S",
 }
 
-class Laser {
-  public path: [number, number][] = [];
+const STATE: State = {
+  GRID: [] as Grid,
+  PARTICLES: [] as Particle[],
+  SPLIT_COUNT: 0,
+  IGNORE_COLLISIONS: true,
+};
 
-  constructor(public x: number, public y: number) {}
+const createGrid = (input: string) => {
+  const lines = input.split("\n").filter(Boolean);
+  const grid: Grid = [];
 
-  move(x: number, y: number) {
-    this.x = x;
-    this.y = y;
+  for (let y = 0; y < lines.length; y++) {
+    const line = lines[y];
+    grid[y] = [];
 
-    this.path.push([x, y]);
-  }
-
-  isOutOfBounds(size: [number, number]) {
-    return this.x < 0 || this.x >= size[0] || this.y < 0 || this.y >= size[1];
-  }
-}
-
-class Grid {
-  nodes: Node[][] = [];
-  lasers: Laser[] = [];
-  destroyedLasers: Laser[] = [];
-  size: [number, number] = [0, 0];
-
-  constructor(input: string) {
-    const lines = input.trim().split("\n");
-
-    for (const [i, line] of lines.entries()) {
-      const row: Node[] = [];
-      for (const [j, char] of line.split("").entries()) {
-        const node = new Node(char as NodeType);
-
-        if (char === "S") {
-          this.lasers.push(new Laser(j, i));
-        }
-
-        row.push(node);
-      }
-      this.nodes.push(row);
+    for (let x = 0; x < line.length; x++) {
+      grid[y][x] = line[x] as Tile;
     }
-
-    this.size = [this.nodes[0].length, this.nodes.length];
   }
 
-  get splitCount() {
-    let count = 0;
-    for (const row of this.nodes) {
-      for (const node of row) {
-        if (node.hasSplit) {
-          count++;
-        }
+  return grid;
+};
+
+const isOutOfBounds = (x: number, y: number) => {
+  return y < 0 || y >= STATE.GRID.length || x < 0 || x >= STATE.GRID[0].length;
+};
+
+const paint = (x: number, y: number, tile: Tile) => {
+  STATE.GRID[y][x] = tile;
+};
+
+const print = () => {
+  for (const row of STATE.GRID) {
+    console.log(row.join(""));
+  }
+
+  console.log("\n");
+};
+
+const getTile = (x: number, y: number) => {
+  if (y < 0 || y >= STATE.GRID.length) {
+    throw new Error(`Y coordinate ${y} is out of bounds`);
+  }
+
+  if (x < 0 || x >= STATE.GRID[y].length) {
+    throw new Error(`X coordinate ${x} is out of bounds`);
+  }
+
+  return STATE.GRID[y][x];
+};
+
+const descendParticle = (particle: Particle) => {
+  paint(particle.x, particle.y, Tile.Laser);
+  const below = { x: particle.x, y: particle.y + 1 };
+
+  if (isOutOfBounds(below.x, below.y)) {
+    return;
+  }
+
+  const tileBelow = getTile(below.x, below.y);
+
+  if (tileBelow !== Tile.Splitter) {
+    moveParticle(particle, 0, 1);
+  } else {
+    STATE.SPLIT_COUNT += particle.count;
+
+    // When ignoring collisions, check if we can merge with existing particles
+    if (STATE.IGNORE_COLLISIONS) {
+      // Try to merge with existing particles moving left
+      const existingLeft = STATE.PARTICLES.find(
+        (p) => p.x === particle.x - 1 && p.y === particle.y + 1
+      );
+
+      if (existingLeft) {
+        existingLeft.count += particle.count;
+      } else {
+        STATE.PARTICLES.push({
+          x: particle.x - 1,
+          y: particle.y + 1,
+          count: particle.count,
+        });
       }
+
+      // Try to merge with existing particles moving right
+      const existingRight = STATE.PARTICLES.find(
+        (p) => p.x === particle.x + 1 && p.y === particle.y + 1
+      );
+
+      if (existingRight) {
+        existingRight.count += particle.count;
+      } else {
+        STATE.PARTICLES.push({
+          x: particle.x + 1,
+          y: particle.y + 1,
+          count: particle.count,
+        });
+      }
+
+      // Remove original particle
+      STATE.PARTICLES.splice(STATE.PARTICLES.indexOf(particle), 1);
+    } else {
+      const newParticle = { x: particle.x, y: particle.y, count: 1 };
+      STATE.PARTICLES.push(newParticle);
+      moveParticle(particle, -1, 1);
+      moveParticle(newParticle, 1, 1);
     }
-    return count;
   }
+};
 
-  hasLaserAt(x: number, y: number) {
-    return this.lasers.some((laser) => laser.x === x && laser.y === y);
-  }
+const moveParticle = (particle: Particle, dx: number, dy: number) => {
+  const targetX = particle.x + dx;
+  const targetY = particle.y + dy;
 
-  destroyLaser(laser: Laser) {
-    this.destroyedLasers.push(laser);
-    this.lasers = this.lasers.filter((l) => l.x !== laser.x || l.y !== laser.y);
-  }
+  if (STATE.IGNORE_COLLISIONS) {
+    // When ignoring collisions, merge with existing particle at target
+    const existing = STATE.PARTICLES.find(
+      (p) => p.x === targetX && p.y === targetY
+    );
 
-  tick() {
-    const newLasers: Laser[] = [];
-
-    for (const laser of this.lasers) {
-      laser.move(laser.x, laser.y + 1);
-
-      if (laser.isOutOfBounds(this.size)) {
-        this.destroyLaser(laser);
-
-        continue;
-      }
-
-      const current = this.nodes[laser.y][laser.x];
-
-      if (current.type === ".") {
-        current.type = "|";
-        continue;
-      }
-
-      if (current.type === "^") {
-        const l = new Laser(laser.x - 1, laser.y);
-        const r = new Laser(laser.x + 1, laser.y);
-
-        if (
-          !newLasers.some((n) => n.x === l.x && n.y === l.y) &&
-          !this.hasLaserAt(l.x, l.y)
-        ) {
-          newLasers.push(l);
-          this.nodes[laser.y][laser.x - 1].type = "|";
-        }
-
-        if (
-          !newLasers.some((n) => n.x === r.x && n.y === r.y) &&
-          !this.hasLaserAt(r.x, r.y)
-        ) {
-          newLasers.push(r);
-          this.nodes[laser.y][laser.x + 1].type = "|";
-        }
-
-        this.destroyLaser(laser);
-
-        this.nodes[laser.y][laser.x].hasSplit = true;
-
-        continue;
-      }
+    if (existing) {
+      existing.count += particle.count;
+      STATE.PARTICLES.splice(STATE.PARTICLES.indexOf(particle), 1);
+      return;
     }
+  } else {
+    // If another particle is already at the target position, remove this particle
+    const isOccupied = STATE.PARTICLES.some(
+      (p) => p.x === targetX && p.y === targetY
+    );
 
-    this.lasers.push(...newLasers);
-  }
-
-  quantumTick() {
-    const newLasers: Laser[] = [];
-
-    for (const laser of this.lasers) {
-      laser.move(laser.x, laser.y + 1);
-
-      if (laser.isOutOfBounds(this.size)) {
-        this.destroyLaser(laser);
-
-        continue;
-      }
-
-      const current = this.nodes[laser.y][laser.x];
-
-      if (current.type === ".") {
-        current.type = "|";
-        continue;
-      }
-
-      if (current.type === "^") {
-        const l = new Laser(laser.x - 1, laser.y);
-        const r = new Laser(laser.x + 1, laser.y);
-
-        newLasers.push(l);
-        this.nodes[laser.y][laser.x - 1].type = "|";
-
-        newLasers.push(r);
-        this.nodes[laser.y][laser.x + 1].type = "|";
-
-        this.destroyLaser(laser);
-
-        this.nodes[laser.y][laser.x].hasSplit = true;
-
-        continue;
-      }
+    if (isOccupied) {
+      STATE.PARTICLES.splice(STATE.PARTICLES.indexOf(particle), 1);
+      return;
     }
-
-    this.lasers.push(...newLasers);
   }
 
-  render() {
-    const output: string[] = [];
-
-    for (let i = 0; i < this.nodes.length; i++) {
-      let row = `${i.toString().padStart(3, "0")} `;
-      for (let j = 0; j < this.nodes[i].length; j++) {
-        const node = this.nodes[i][j];
-        row += node.type;
-      }
-      output.push(row);
-    }
-
-    return output.join("\n");
-  }
-}
+  particle.x = targetX;
+  particle.y = targetY;
+};
 
 export async function part1() {
   const input = await getInput(import.meta.url);
+  const emitterIdx = input.indexOf(Tile.Emitter);
 
-  const grid = new Grid(input);
-
-  while (grid.lasers.length > 0) {
-    grid.tick();
+  if (emitterIdx === -1) {
+    throw new Error("No emitter found in the top row");
   }
 
-  console.log(grid.render(), grid.splitCount);
+  STATE.IGNORE_COLLISIONS = false;
+
+  STATE.GRID = createGrid(input);
+  STATE.PARTICLES.push({ x: emitterIdx, y: 1, count: 1 });
+
+  for (let i = 1; i < STATE.GRID.length; i++) {
+    const particles = [...STATE.PARTICLES];
+
+    for (const particle of particles) {
+      descendParticle(particle);
+    }
+  }
+
+  print();
+
+  console.log(STATE.SPLIT_COUNT);
 }
 
 export async function part2() {
-  const input = await getDebug(import.meta.url);
+  const input = await getInput(import.meta.url);
 
-  const grid = new Grid(input);
+  const emitterIdx = input.indexOf(Tile.Emitter);
 
-  while (grid.lasers.length > 0) {
-    grid.quantumTick();
+  if (emitterIdx === -1) {
+    throw new Error("No emitter found in the top row");
   }
 
-  console.log(grid.render());
+  STATE.IGNORE_COLLISIONS = true;
 
-  console.log(grid.destroyedLasers.length);
+  STATE.GRID = createGrid(input);
+  STATE.PARTICLES = [{ x: emitterIdx, y: 1, count: 1 }];
+
+  for (let i = 1; i < STATE.GRID.length; i++) {
+    const particles = [...STATE.PARTICLES];
+    for (const particle of particles) {
+      descendParticle(particle);
+    }
+  }
+
+  print();
+
+  console.log(STATE.SPLIT_COUNT + 1);
 }
