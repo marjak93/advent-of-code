@@ -1,42 +1,35 @@
 use crate::util::get_input;
 
 fn calculate_joltage(input: String, n: usize) -> u64 {
-    let banks = input.lines();
+    input
+        .lines()
+        .map(|bank| {
+            let batteries: Vec<u64> = bank
+                .chars()
+                .filter_map(|c| c.to_digit(10).map(|d| d as u64))
+                .collect();
 
-    let mut results = Vec::new();
+            let mut result = 0u64;
+            let mut start_idx = 0;
 
-    for bank in banks {
-        let mut batteries: Vec<u64> = bank
-            .chars()
-            .filter_map(|c| c.to_digit(10).map(|d| d as u64))
-            .collect();
+            for digits_remaining in (1..=n).rev() {
+                // Find the rightmost position with the maximum digit
+                // that leaves enough batteries for remaining digits
+                let search_end = batteries.len() - digits_remaining + 1;
 
-        let mut digits: Vec<u64> = Vec::new();
+                let (best_idx, best_digit) = (start_idx..search_end)
+                    .rev() // Scan from right to left
+                    .map(|i| (i, batteries[i]))
+                    .max_by_key(|&(_, digit)| digit)
+                    .unwrap();
 
-        while digits.len() < n {
-            let mut target = 9;
-            let mut found = false;
-
-            while !found {
-                for i in 0..batteries.len() {
-                    if batteries[i] == target && batteries.len() - i >= n - digits.len() {
-                        digits.push(batteries[i]);
-                        batteries = batteries.split_off(i + 1);
-                        found = true;
-
-                        break;
-                    }
-                }
-
-                target -= 1;
+                result = result * 10 + best_digit;
+                start_idx = best_idx + 1;
             }
-        }
 
-        let result: u64 = digits.iter().fold(0, |acc, &d| acc * 10 + d);
-        results.push(result);
-    }
-
-    results.iter().sum()
+            result
+        })
+        .sum()
 }
 
 #[allow(unused_variables)]
