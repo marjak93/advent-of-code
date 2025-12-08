@@ -1,0 +1,18 @@
+[package]
+name = "advent-of-code"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+reqwest = { version = "0.11", features = ["blocking", "cookies"] }
+tokio = { version = "1", features = ["full"] }
+clap = { version = "4.4", features = ["derive"] }
+dotenv = "0.15"
+
+[[bin]]
+name = "aoc"
+path = "src/main.rs"
+
+[[bin]]
+name = "setup-day"
+path = "src/setup_day.rs"
