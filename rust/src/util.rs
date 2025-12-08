@@ -6,6 +6,11 @@ pub fn get_input(year: u32, day: u32) -> String {
     fs::read_to_string(&path).unwrap_or_else(|_| panic!("Failed to read input file at {:?}", path))
 }
 
+pub fn get_debug(year: u32, day: u32) -> String {
+    let path = PathBuf::from(format!("src/{}/{}/debug.txt", year, day));
+    fs::read_to_string(&path).unwrap_or_else(|_| panic!("Failed to read debug file at {:?}", path))
+}
+
 pub fn read_input_lines(year: u32, day: u32) -> Vec<String> {
     get_input(year, day)
         .lines()
