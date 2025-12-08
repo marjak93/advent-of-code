@@ -46,9 +46,9 @@ const createCircuits = (
 
     // Already connected
     if (circuitAIndex === circuitBIndex) {
-      console.log(
-        `\nIteration ${iteration}: Junction box ${a} and ${b} already connected, skipping`
-      );
+      // console.log(
+      //   `\nIteration ${iteration}: Junction box ${a} and ${b} already connected, skipping`
+      // );
 
       iteration++;
 
@@ -61,9 +61,9 @@ const createCircuits = (
       ...circuits[circuitBIndex],
     ];
 
-    console.log(
-      `\nIteration ${iteration}: Connecting junction box ${a} and ${b}`
-    );
+    // console.log(
+    //   `\nIteration ${iteration}: Connecting junction box ${a} and ${b}`
+    // );
 
     circuits.splice(circuitBIndex, 1);
 
@@ -74,7 +74,7 @@ const createCircuits = (
       break;
     }
 
-    console.log(circuits);
+    // console.log(circuits);
 
     iteration++;
   }
@@ -103,7 +103,7 @@ export async function part1() {
 
   const result = threeLargest.reduce((acc, val) => acc * val, 1);
 
-  console.log("Result:", result);
+  console.log(result);
 }
 
 export async function part2() {

@@ -82,5 +82,7 @@ if (import.meta.main) {
     Deno.exit(1);
   }
 
+  console.time("Execution Time");
   await fn();
+  console.timeEnd("Execution Time");
 }
