@@ -1,3 +1,5 @@
+#[path = "7/mod.rs"]
+pub mod day7;
 #[path = "1/mod.rs"]
 pub mod day1;
 #[path = "8/mod.rs"]
@@ -9,6 +11,8 @@ pub fn get_solution(day: u32, part: u32) -> Option<fn()> {
         (8, 2) => Some(day8::part2),
         (1, 1) => Some(day1::part1),
         (1, 2) => Some(day1::part2),
+        (7, 1) => Some(day7::part1),
+        (7, 2) => Some(day7::part2),
         _ => None,
     }
 }
