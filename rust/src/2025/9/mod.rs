@@ -2,27 +2,27 @@ use crate::util::get_input;
 use rayon::prelude::*;
 
 #[derive(Copy, Clone, Debug)]
-struct Point {
-    x: i32,
-    y: i32,
+pub struct Point {
+    pub x: i32,
+    pub y: i32,
 }
 
 #[derive(Copy, Clone, Debug)]
-struct Line {
-    p1: Point,
-    p2: Point,
+pub struct Line {
+    pub p1: Point,
+    pub p2: Point,
 }
 
 #[derive(Clone, Debug)]
-struct Polygon {
+pub struct Polygon {
     bounding_box: (i32, i32, i32, i32),
-    edges: Vec<Line>,
+    pub edges: Vec<Line>,
 }
 
 #[derive(Clone, Debug)]
-struct Rect {
-    p1: Point,
-    p2: Point,
+pub struct Rect {
+    pub p1: Point,
+    pub p2: Point,
 }
 
 impl Line {
@@ -79,14 +79,14 @@ impl Line {
 
 impl Rect {
     #[inline]
-    fn area(&self) -> u64 {
+    pub fn area(&self) -> u64 {
         ((self.p2.x - self.p1.x).abs() as u64 + 1) * ((self.p2.y - self.p1.y).abs() as u64 + 1)
     }
 }
 
 impl Polygon {
     /// Creates a new polygon from vertices, computing bounding box and edges
-    fn new(vertices: Vec<Point>) -> Self {
+    pub fn new(vertices: Vec<Point>) -> Self {
         let min_x = vertices.iter().map(|p| p.x).min().unwrap_or(0);
         let max_x = vertices.iter().map(|p| p.x).max().unwrap_or(0);
         let min_y = vertices.iter().map(|p| p.y).min().unwrap_or(0);
@@ -106,12 +106,12 @@ impl Polygon {
     }
 
     #[inline]
-    fn bounding_box(&self) -> (i32, i32, i32, i32) {
+    pub fn bounding_box(&self) -> (i32, i32, i32, i32) {
         self.bounding_box
     }
 
     // Check if the rectangle is fully contained within the polygon
-    fn can_contain_rect(&self, rect: &Rect) -> bool {
+    pub fn can_contain_rect(&self, rect: &Rect) -> bool {
         let rect_min_x = rect.p1.x.min(rect.p2.x);
         let rect_max_x = rect.p1.x.max(rect.p2.x);
         let rect_min_y = rect.p1.y.min(rect.p2.y);
@@ -237,7 +237,7 @@ impl Polygon {
     }
 }
 
-fn parse_input(input: &str) -> Vec<Point> {
+pub fn parse_input(input: &str) -> Vec<Point> {
     input
         .lines()
         .map(|line| {
@@ -310,4 +310,53 @@ pub fn part2() {
         .unwrap_or(0);
 
     println!("Max contained area: {}", max_area);
+}
+
+// Sequential version for visualization with callback
+pub fn part2_visualize<F>(mut callback: F) -> u64
+where
+    F: FnMut(&Rect, u64, bool, u64), // rect, area, is_contained, current_best
+{
+    let input = get_input(2025, 9);
+
+    let points: Vec<Point> = parse_input(&input);
+    let polygon = Polygon::new(points.clone());
+
+    // Generate all candidate rectangles with their areas (sequential)
+    let mut candidates: Vec<(Rect, u64)> = Vec::new();
+    for i in 0..points.len() {
+        for j in i + 1..points.len() {
+            let p1 = points[i];
+            let p2 = points[j];
+            let rect = Rect { p1, p2 };
+            let area = rect.area();
+            candidates.push((rect, area));
+        }
+    }
+
+    // Sort by area descending - check largest first
+    candidates.sort_unstable_by(|a, b| b.1.cmp(&a.1));
+
+    // Find the largest contained rectangle with visualization
+    let mut max_area: u64 = 0;
+
+    for (rect, area) in candidates.iter() {
+        let is_contained = polygon.can_contain_rect(rect);
+
+        callback(rect, *area, is_contained, max_area);
+
+        if is_contained {
+            max_area = *area;
+            break; // Found the largest
+        }
+    }
+
+    max_area
+}
+
+// Public helper to get polygon for visualization
+pub fn get_polygon() -> Polygon {
+    let input = get_input(2025, 9);
+    let points: Vec<Point> = parse_input(&input);
+    Polygon::new(points)
 }

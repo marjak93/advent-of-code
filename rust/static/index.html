@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AoC 2025 Day 9 Part 2 Visualization</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">
+        <div id="container">
+            <div id="canvas-container">
+                <canvas ref="canvas"></canvas>
+            </div>
+
+            <div id="info">
+                <div class="stat">
+                    <div class="label">Connection</div>
+                    <div class="value" :class="connectionClass">{{ connectionStatus }}</div>
+                </div>
+
+                <div class="stat">
+                    <div class="label">Rectangles Checked</div>
+                    <div class="value">{{ checkedCount.toLocaleString() }}</div>
+                </div>
+
+                <div class="stat">
+                    <div class="label">Current Rectangle</div>
+                    <div class="value">{{ currentArea.toLocaleString() }}</div>
+                    <div class="label" :class="currentStatusClass">{{ currentStatus }}</div>
+                </div>
+
+                <div class="stat">
+                    <div class="label">Best Area Found</div>
+                    <div class="value">{{ bestArea.toLocaleString() }}</div>
+                </div>
+
+                <div id="controls">
+                    <div class="control-group">
+                        <div class="control-label">Playback</div>
+                        <div class="button-row">
+                            <button @click="start" :disabled="isRunning || connectionStatus !== 'Connected'">▶ Start</button>
+                            <button @click="pause" :disabled="!isRunning || isPaused">⏸ Pause</button>
+                        </div>
+                        <div class="button-row">
+                            <button @click="resume" :disabled="!isRunning || !isPaused">▶ Resume</button>
+                            <button @click="stop" :disabled="!isRunning">⏹ Stop</button>
+                        </div>
+                    </div>
+
+                    <div class="control-group">
+                        <div class="control-label">Speed Control</div>
+                        <input
+                            type="range"
+                            v-model.number="speed"
+                            @input="setSpeed"
+                            min="20"
+                            max="1000"
+                            step="10"
+                        >
+                        <div class="speed-value">
+                            {{ speedLabel }}
+                        </div>
+                        <div class="speed-hint">
+                            Delay per step: {{ delayMs }}ms
+                        </div>
+                    </div>
+                </div>
+
+                <div id="status" :class="statusClass">{{ statusMessage }}</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
