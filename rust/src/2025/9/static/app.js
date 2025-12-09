@@ -432,6 +432,10 @@ createApp({
       const cols = Math.ceil(Math.sqrt(this.numCores));
       const rows = Math.ceil(this.numCores / cols);
 
+      // Set grid template on container
+      container.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+      container.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
+
       console.log(
         `[CANVAS] Creating ${this.numCores} canvases in ${rows}x${cols} grid`
       );
@@ -440,15 +444,6 @@ createApp({
       for (let i = 0; i < this.numCores; i++) {
         const wrapper = document.createElement("div");
         wrapper.className = "canvas-wrapper";
-
-        // Add random spans for mosaic effect (some cells take up more space)
-        const spanOptions = [1, 1, 1, 2]; // Mostly 1, occasionally 2
-        const colSpan =
-          spanOptions[Math.floor(Math.random() * spanOptions.length)];
-        const rowSpan = Math.random() > 0.7 ? 2 : 1; // 30% chance of double height
-
-        wrapper.style.gridColumn = `span ${colSpan}`;
-        wrapper.style.gridRow = `span ${rowSpan}`;
 
         const canvas = document.createElement("canvas");
         const ctx = canvas.getContext("2d");
