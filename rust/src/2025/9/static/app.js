@@ -174,6 +174,10 @@ createApp({
           this.connectionStatus = "Connected";
           this.reconnectAttempts = 0;
           console.log("[WS] Connected successfully");
+
+          // Reset state on new connection
+          this.isRunning = false;
+          this.isPaused = false;
         };
 
         this.ws.onclose = (event) => {
@@ -437,9 +441,17 @@ createApp({
         const wrapper = document.createElement("div");
         wrapper.className = "canvas-wrapper";
 
+        // Add random spans for mosaic effect (some cells take up more space)
+        const spanOptions = [1, 1, 1, 2]; // Mostly 1, occasionally 2
+        const colSpan =
+          spanOptions[Math.floor(Math.random() * spanOptions.length)];
+        const rowSpan = Math.random() > 0.7 ? 2 : 1; // 30% chance of double height
+
+        wrapper.style.gridColumn = `span ${colSpan}`;
+        wrapper.style.gridRow = `span ${rowSpan}`;
+
         const canvas = document.createElement("canvas");
         const ctx = canvas.getContext("2d");
-
         const label = document.createElement("div");
         label.className = "canvas-label";
         label.textContent = `Worker ${i}`;
@@ -485,7 +497,7 @@ createApp({
       let canvasWidth = availableWidth / cols;
       let canvasHeight = availableHeight / rows;
 
-      // Maintain aspect ratio (4:3)
+      // Maintain aspect ratio (4:3) but fit within available space
       const aspectRatio = 4 / 3;
       if (canvasWidth / canvasHeight > aspectRatio) {
         canvasWidth = canvasHeight * aspectRatio;
@@ -493,9 +505,9 @@ createApp({
         canvasHeight = canvasWidth / aspectRatio;
       }
 
-      // Ensure minimum size
-      canvasWidth = Math.max(canvasWidth, 150);
-      canvasHeight = Math.max(canvasHeight, 112.5);
+      // Ensure reasonable bounds
+      canvasWidth = Math.max(canvasWidth, 100);
+      canvasHeight = Math.max(canvasHeight, 75);
 
       this.canvases.forEach((canvas) => {
         canvas.width = canvasWidth;

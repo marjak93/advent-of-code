@@ -26,4 +26,4 @@ path = "src/setup_day.rs"
 
 [[bin]]
 name = "visualize"
-path = "src/visualize.rs"
+path = "src/visualize_runner.rs"

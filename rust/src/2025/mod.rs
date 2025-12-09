@@ -1,21 +1,23 @@
-#[path = "9/mod.rs"]
-pub mod day9;
-#[path = "6/mod.rs"]
-pub mod day6;
-#[path = "5/mod.rs"]
-pub mod day5;
-#[path = "4/mod.rs"]
-pub mod day4;
+#![allow(dead_code)]
+
+#[path = "1/mod.rs"]
+pub mod day1;
 #[path = "2/mod.rs"]
 pub mod day2;
 #[path = "3/mod.rs"]
 pub mod day3;
+#[path = "4/mod.rs"]
+pub mod day4;
+#[path = "5/mod.rs"]
+pub mod day5;
+#[path = "6/mod.rs"]
+pub mod day6;
 #[path = "7/mod.rs"]
 pub mod day7;
-#[path = "1/mod.rs"]
-pub mod day1;
 #[path = "8/mod.rs"]
 pub mod day8;
+#[path = "9/mod.rs"]
+pub mod day9;
 
 pub fn get_solution(day: u32, part: u32) -> Option<fn()> {
     match (day, part) {

@@ -1,5 +1,9 @@
+#![allow(dead_code)]
+
 use crate::util::get_input;
 use rayon::prelude::*;
+
+pub mod visualize;
 
 #[derive(Copy, Clone, Debug)]
 pub struct Point {
@@ -310,48 +314,6 @@ pub fn part2() {
         .unwrap_or(0);
 
     println!("Max contained area: {}", max_area);
-}
-
-// Sequential version for visualization with callback
-pub fn part2_visualize<F>(mut callback: F) -> u64
-where
-    F: FnMut(&Rect, u64, bool, u64), // rect, area, is_contained, current_best
-{
-    let input = get_input(2025, 9);
-
-    let points: Vec<Point> = parse_input(&input);
-    let polygon = Polygon::new(points.clone());
-
-    // Generate all candidate rectangles with their areas (sequential)
-    let mut candidates: Vec<(Rect, u64)> = Vec::new();
-    for i in 0..points.len() {
-        for j in i + 1..points.len() {
-            let p1 = points[i];
-            let p2 = points[j];
-            let rect = Rect { p1, p2 };
-            let area = rect.area();
-            candidates.push((rect, area));
-        }
-    }
-
-    // Sort by area descending - check largest first
-    candidates.sort_unstable_by(|a, b| b.1.cmp(&a.1));
-
-    // Find the largest contained rectangle with visualization
-    let mut max_area: u64 = 0;
-
-    for (rect, area) in candidates.iter() {
-        let is_contained = polygon.can_contain_rect(rect);
-
-        callback(rect, *area, is_contained, max_area);
-
-        if is_contained {
-            max_area = *area;
-            break; // Found the largest
-        }
-    }
-
-    max_area
 }
 
 // Public helper to get polygon for visualization

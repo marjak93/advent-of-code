@@ -1,8 +1,5 @@
-pub mod util;
-
-#[path = "2025/mod.rs"]
-pub mod year2025;
-
+use super::{get_polygon, parse_input, Point, Polygon, Rect};
+use crate::util;
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
@@ -18,7 +15,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{mpsc, RwLock};
 use tower_http::services::ServeDir;
-use year2025::day9::{get_polygon, Point, Polygon, Rect};
 
 // Messages from client to server
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -218,7 +214,13 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
             send_task.abort();
         },
     }
-    println!("[WS] WebSocket connection closed");
+
+    // Clean up algorithm state when connection closes
+    println!("[WS] WebSocket connection closed, cleaning up state");
+    let mut alg_state = state.algorithm_state.write().await;
+    *alg_state.stop_signal.write().await = true;
+    alg_state.running = false;
+    alg_state.paused = false;
 }
 
 async fn handle_client_message(
@@ -510,8 +512,8 @@ async fn run_algorithm(
     println!("[ALG] Using {} worker(s)", num_cores);
 
     // Get all candidates
-    let input = crate::util::get_input(2025, 9);
-    let points: Vec<Point> = year2025::day9::parse_input(&input);
+    let input = util::get_input(2025, 9);
+    let points: Vec<Point> = parse_input(&input);
 
     // Generate all candidate rectangles
     let mut candidates: Vec<(Rect, u64)> = Vec::new();
@@ -758,8 +760,7 @@ async fn run_algorithm(
     println!("[ALG] Algorithm fully cleaned up and ready for next run");
 }
 
-#[tokio::main]
-async fn main() {
+pub async fn run_visualizer() {
     println!("🎄 Advent of Code 2025 - Day 9 Part 2 Visualization 🎄");
     println!("Loading data...");
 
@@ -773,7 +774,7 @@ async fn main() {
 
     let app = Router::new()
         .route("/ws", get(ws_handler))
-        .nest_service("/", ServeDir::new("static"))
+        .nest_service("/", ServeDir::new("src/2025/9/static"))
         .with_state(state);
 
     let addr = "127.0.0.1:3000";
@@ -783,4 +784,10 @@ async fn main() {
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
+}
+
+#[tokio::main]
+#[allow(dead_code)]
+async fn main() {
+    run_visualizer().await;
 }
