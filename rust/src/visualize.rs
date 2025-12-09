@@ -34,6 +34,8 @@ enum ClientMessage {
     Stop,
     #[serde(rename = "set_speed")]
     SetSpeed { speed: u64 },
+    #[serde(rename = "set_cores")]
+    SetCores { num_cores: usize },
 }
 
 // Messages from server to client
@@ -126,13 +128,19 @@ struct AppState {
     algorithm_state: Arc<RwLock<AlgorithmState>>,
 }
 
-#[derive(Clone)]
 struct AlgorithmState {
     running: bool,
     paused: bool,
     speed: u64, // microseconds delay
     num_cores: usize,
     stop_signal: Arc<RwLock<bool>>,
+    work_queue: Arc<tokio::sync::Mutex<std::collections::VecDeque<usize>>>,
+    worker_count: Arc<std::sync::atomic::AtomicUsize>,
+    // Shared state for dynamic worker spawning
+    candidates: Option<Arc<Vec<(Rect, u64)>>>,
+    total_checked: Option<Arc<std::sync::atomic::AtomicUsize>>,
+    best_area: Option<Arc<std::sync::atomic::AtomicU64>>,
+    worker_states: Option<Arc<std::sync::Mutex<Vec<Option<(Rect, u64, bool)>>>>>,
 }
 
 impl AlgorithmState {
@@ -143,6 +151,12 @@ impl AlgorithmState {
             speed: 10000, // 10ms default - slow start
             num_cores: 1,
             stop_signal: Arc::new(RwLock::new(false)),
+            work_queue: Arc::new(tokio::sync::Mutex::new(std::collections::VecDeque::new())),
+            worker_count: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            candidates: None,
+            total_checked: None,
+            best_area: None,
+            worker_states: None,
         }
     }
 }
@@ -288,6 +302,200 @@ async fn handle_client_message(
             let mut alg_state = state.algorithm_state.write().await;
             alg_state.speed = speed;
         }
+        ClientMessage::SetCores { num_cores } => {
+            println!("[MSG] Dynamically changing cores to: {}", num_cores);
+            let alg_state = state.algorithm_state.read().await;
+
+            if !alg_state.running {
+                println!("[MSG] Not running, just updating core count");
+                drop(alg_state);
+                let mut alg_state_write = state.algorithm_state.write().await;
+                alg_state_write.num_cores = num_cores;
+                return;
+            }
+
+            let current_cores = alg_state
+                .worker_count
+                .load(std::sync::atomic::Ordering::Relaxed);
+            println!(
+                "[MSG] Current workers: {}, target: {}",
+                current_cores, num_cores
+            );
+
+            if num_cores > current_cores {
+                // Spawn additional workers
+                println!(
+                    "[MSG] Spawning {} additional workers",
+                    num_cores - current_cores
+                );
+
+                // Get shared state needed for spawning
+                let candidates = alg_state.candidates.clone();
+                let total_checked = alg_state.total_checked.clone();
+                let best_area = alg_state.best_area.clone();
+                let worker_states = alg_state.worker_states.clone();
+                let work_queue = alg_state.work_queue.clone();
+                let worker_count = alg_state.worker_count.clone();
+                let polygon = state.polygon.clone();
+                let alg_state_for_workers = state.algorithm_state.clone();
+
+                // Check if we have the necessary shared state
+                if let (
+                    Some(candidates),
+                    Some(total_checked),
+                    Some(best_area),
+                    Some(worker_states),
+                ) = (candidates, total_checked, best_area, worker_states)
+                {
+                    // Update worker count first
+                    worker_count.store(num_cores, std::sync::atomic::Ordering::Relaxed);
+
+                    // Spawn new workers
+                    for worker_id in current_cores..num_cores {
+                        let alg_state_clone = alg_state_for_workers.clone();
+                        let polygon_clone = polygon.clone();
+                        let candidates_clone = candidates.clone();
+                        let total_checked_clone = total_checked.clone();
+                        let best_area_clone = best_area.clone();
+                        let worker_states_clone = worker_states.clone();
+                        let work_queue_clone = work_queue.clone();
+                        let worker_count_clone = worker_count.clone();
+
+                        tokio::task::spawn_blocking(move || {
+                            println!(
+                                "[Worker {}] Started dynamically, pulling work from queue",
+                                worker_id
+                            );
+
+                            loop {
+                                // Check if this worker should exit (worker count reduced)
+                                let current_worker_count =
+                                    worker_count_clone.load(std::sync::atomic::Ordering::Relaxed);
+                                if worker_id >= current_worker_count {
+                                    println!(
+                                        "[Worker {}] Exiting due to worker count reduction to {}",
+                                        worker_id, current_worker_count
+                                    );
+                                    return;
+                                }
+
+                                // Get next work item from queue
+                                let idx = {
+                                    let runtime = tokio::runtime::Handle::current();
+                                    runtime.block_on(async {
+                                        work_queue_clone.lock().await.pop_front()
+                                    })
+                                };
+
+                                let idx = match idx {
+                                    Some(i) => i,
+                                    None => {
+                                        println!(
+                                            "[Worker {}] No more work in queue, exiting",
+                                            worker_id
+                                        );
+                                        return;
+                                    }
+                                };
+
+                                let (rect, area) = &candidates_clone[idx];
+
+                                // Check if we should stop
+                                let should_stop = {
+                                    let state = alg_state_clone.blocking_read();
+                                    let stop_sig = state.stop_signal.blocking_read();
+                                    *stop_sig
+                                };
+
+                                if should_stop {
+                                    println!("[Worker {}] Stop signal received", worker_id);
+                                    return;
+                                }
+
+                                // Wait while paused
+                                loop {
+                                    let (is_paused, should_stop) = {
+                                        let state = alg_state_clone.blocking_read();
+                                        let stop_sig = state.stop_signal.blocking_read();
+                                        (state.paused, *stop_sig)
+                                    };
+
+                                    if should_stop {
+                                        println!(
+                                            "[Worker {}] Stop signal received while paused",
+                                            worker_id
+                                        );
+                                        return;
+                                    }
+
+                                    if !is_paused {
+                                        break;
+                                    }
+
+                                    std::thread::sleep(Duration::from_millis(50));
+                                }
+
+                                let is_contained = polygon_clone.can_contain_rect(rect);
+                                total_checked_clone
+                                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+                                if is_contained {
+                                    best_area_clone
+                                        .fetch_max(*area, std::sync::atomic::Ordering::Relaxed);
+                                }
+
+                                // Update worker state for batched sending
+                                {
+                                    let mut states = worker_states_clone.lock().unwrap();
+                                    // Ensure the worker_states vec is large enough
+                                    while states.len() <= worker_id {
+                                        states.push(None);
+                                    }
+                                    states[worker_id] = Some((*rect, *area, is_contained));
+                                }
+
+                                // Apply speed control
+                                let speed = alg_state_clone.blocking_read().speed;
+                                if speed > 0 {
+                                    std::thread::sleep(Duration::from_micros(speed));
+                                }
+
+                                // If we found a valid rectangle and it's the largest possible, we can stop
+                                let current_best =
+                                    best_area_clone.load(std::sync::atomic::Ordering::Relaxed);
+                                if is_contained && current_best == *area {
+                                    println!(
+                                        "[Worker {}] Found optimal solution: {}",
+                                        worker_id, area
+                                    );
+                                    break;
+                                }
+                            }
+                        });
+                    }
+
+                    println!(
+                        "[MSG] Successfully spawned {} new workers",
+                        num_cores - current_cores
+                    );
+                } else {
+                    println!("[MSG] Cannot spawn workers: shared state not initialized");
+                }
+            } else if num_cores < current_cores {
+                // Workers will naturally exit when they see the reduced worker_count
+                println!(
+                    "[MSG] Reducing worker count from {} to {}",
+                    current_cores, num_cores
+                );
+                alg_state
+                    .worker_count
+                    .store(num_cores, std::sync::atomic::Ordering::Relaxed);
+            }
+
+            drop(alg_state);
+            let mut alg_state_write = state.algorithm_state.write().await;
+            alg_state_write.num_cores = num_cores;
+        }
     }
 }
 
@@ -322,20 +530,39 @@ async fn run_algorithm(
 
     println!("[ALG] Total candidates: {}", candidates.len());
 
-    // Distribute work evenly across workers by interleaving
-    // Instead of giving worker 0 the first chunk, worker 1 the second chunk, etc.
-    // Give worker 0 indices 0, num_cores, 2*num_cores, ...
-    // Give worker 1 indices 1, num_cores+1, 2*num_cores+1, ...
-    // This ensures each worker gets a mix of large and small rectangles
+    // Initialize work queue with all candidate indices
+    let work_queue = {
+        let alg_state_read = alg_state.read().await;
+        let mut queue = alg_state_read.work_queue.lock().await;
+        queue.clear();
+        for i in 0..candidates.len() {
+            queue.push_back(i);
+        }
+        println!("[ALG] Work queue initialized with {} items", queue.len());
+        alg_state_read.work_queue.clone()
+    };
+
     let candidates_arc = Arc::new(candidates);
+    let worker_count_global = alg_state.read().await.worker_count.clone();
+    worker_count_global.store(num_cores, std::sync::atomic::Ordering::Relaxed);
 
     // Shared state for batched updates
     let total_checked = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let best_area_global = Arc::new(std::sync::atomic::AtomicU64::new(0));
+    // Use a larger initial size to accommodate dynamic workers
     let worker_states = Arc::new(std::sync::Mutex::new(vec![
         None::<(Rect, u64, bool)>;
-        num_cores
+        std::cmp::max(num_cores, 16) // Support up to 16 workers dynamically
     ]));
+
+    // Store shared state in AlgorithmState for dynamic worker spawning
+    {
+        let mut alg_state_write = alg_state.write().await;
+        alg_state_write.candidates = Some(candidates_arc.clone());
+        alg_state_write.total_checked = Some(total_checked.clone());
+        alg_state_write.best_area = Some(best_area_global.clone());
+        alg_state_write.worker_states = Some(worker_states.clone());
+    }
 
     // Spawn update sender task that sends at 60fps
     let tx_update = tx.clone();
@@ -390,32 +617,38 @@ async fn run_algorithm(
         let total_checked_clone = total_checked.clone();
         let best_area_clone = best_area_global.clone();
         let worker_states_clone = worker_states.clone();
+        let work_queue_clone = work_queue.clone();
+        let worker_count_clone = worker_count_global.clone();
 
         let handle = tokio::task::spawn_blocking(move || {
-            // Process every num_cores-th element starting from worker_id
-            // Worker 0: 0, num_cores, 2*num_cores, ...
-            // Worker 1: 1, num_cores+1, 2*num_cores+1, ...
-            let mut idx = worker_id;
-            let total_candidates = candidates_clone.len();
+            println!("[Worker {}] Started, pulling work from queue", worker_id);
 
-            println!(
-                "[Worker {}] Processing indices {}, {}, {}, ... (every {} indices)",
-                worker_id,
-                idx,
-                if idx + num_cores < total_candidates {
-                    idx + num_cores
-                } else {
-                    0
-                },
-                if idx + 2 * num_cores < total_candidates {
-                    idx + 2 * num_cores
-                } else {
-                    0
-                },
-                num_cores
-            );
+            loop {
+                // Check if this worker should exit (worker count reduced)
+                let current_worker_count =
+                    worker_count_clone.load(std::sync::atomic::Ordering::Relaxed);
+                if worker_id >= current_worker_count {
+                    println!(
+                        "[Worker {}] Exiting due to worker count reduction to {}",
+                        worker_id, current_worker_count
+                    );
+                    return;
+                }
 
-            while idx < total_candidates {
+                // Get next work item from queue
+                let idx = {
+                    let runtime = tokio::runtime::Handle::current();
+                    runtime.block_on(async { work_queue_clone.lock().await.pop_front() })
+                };
+
+                let idx = match idx {
+                    Some(i) => i,
+                    None => {
+                        println!("[Worker {}] No more work in queue, exiting", worker_id);
+                        return;
+                    }
+                };
+
                 let (rect, area) = &candidates_clone[idx];
 
                 // Check if we should stop
@@ -475,9 +708,6 @@ async fn run_algorithm(
                     println!("[Worker {}] Found optimal solution: {}", worker_id, area);
                     break;
                 }
-
-                // Move to next index for this worker
-                idx += num_cores;
             }
         });
 

@@ -53,10 +53,10 @@
                         <input
                             type="range"
                             v-model.number="numCores"
+                            @input="setCores"
                             min="1"
                             :max="maxCores"
                             step="1"
-                            :disabled="isRunning"
                         >
                         <div class="speed-value">
                             {{ numCores }} / {{ maxCores }} cores

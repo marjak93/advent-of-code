@@ -400,6 +400,21 @@ createApp({
       }
     },
 
+    setCores() {
+      console.log("[UI] Setting cores to:", this.numCores);
+
+      if (this.isRunning) {
+        // Send message to dynamically adjust worker count
+        this.sendMessage({ type: "set_cores", num_cores: this.numCores });
+      }
+
+      // Recreate canvases if count changed
+      if (this.canvases.length !== this.numCores) {
+        console.log(`[UI] Recreating canvases for ${this.numCores} cores`);
+        this.createCanvases();
+      }
+    },
+
     createCanvases() {
       const container = this.$refs.canvasContainer;
       if (!container) return;
