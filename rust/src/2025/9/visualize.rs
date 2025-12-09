@@ -1,5 +1,4 @@
-use super::{get_polygon, parse_input, Point, Polygon, Rect};
-use crate::util;
+use super::{generate_candidates, get_polygon, parse_input, Point, Polygon, Rect};
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
@@ -512,23 +511,9 @@ async fn run_algorithm(
     println!("[ALG] Using {} worker(s)", num_cores);
 
     // Get all candidates
-    let input = util::get_input(2025, 9);
+    let input = crate::util::get_input(2025, 9);
     let points: Vec<Point> = parse_input(&input);
-
-    // Generate all candidate rectangles
-    let mut candidates: Vec<(Rect, u64)> = Vec::new();
-    for i in 0..points.len() {
-        for j in i + 1..points.len() {
-            let p1 = points[i];
-            let p2 = points[j];
-            let rect = Rect { p1, p2 };
-            let area = rect.area();
-            candidates.push((rect, area));
-        }
-    }
-
-    // Sort by area descending
-    candidates.sort_unstable_by(|a, b| b.1.cmp(&a.1));
+    let candidates = generate_candidates(&points);
 
     println!("[ALG] Total candidates: {}", candidates.len());
 

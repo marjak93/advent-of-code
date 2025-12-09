@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use crate::util::get_input;
 use rayon::prelude::*;
 
@@ -321,4 +319,21 @@ pub fn get_polygon() -> Polygon {
     let input = get_input(2025, 9);
     let points: Vec<Point> = parse_input(&input);
     Polygon::new(points)
+}
+
+// Generate all candidate rectangles from points
+pub fn generate_candidates(points: &[Point]) -> Vec<(Rect, u64)> {
+    let mut candidates: Vec<(Rect, u64)> = Vec::new();
+    for i in 0..points.len() {
+        for j in i + 1..points.len() {
+            let p1 = points[i];
+            let p2 = points[j];
+            let rect = Rect { p1, p2 };
+            let area = rect.area();
+            candidates.push((rect, area));
+        }
+    }
+    // Sort by area descending
+    candidates.sort_unstable_by(|a, b| b.1.cmp(&a.1));
+    candidates
 }
