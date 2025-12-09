@@ -156,28 +156,48 @@ impl Polygon {
         let width = rect_max_x - rect_min_x;
         let height = rect_max_y - rect_min_y;
 
-        // Adaptive sampling based on rectangle size
-        let samples = 10.max((width.max(height) / 1000) as usize);
-
-        // Check top and bottom edges (skip i=0 and i=samples as those are corners already checked)
-        for i in 1..samples {
-            let x = rect_min_x + (width * i as i32) / samples as i32;
-            if !self.point_in_or_on_polygon(Point { x, y: rect_min_y }) {
+        // Quick check with fewer samples first
+        let quick_samples = 5;
+        for i in 1..quick_samples {
+            let x = rect_min_x + (width * i as i32) / quick_samples as i32;
+            if !self.is_point_inside_by_ray_casting(Point { x, y: rect_min_y }) {
                 return false;
             }
-            if !self.point_in_or_on_polygon(Point { x, y: rect_max_y }) {
+            if !self.is_point_inside_by_ray_casting(Point { x, y: rect_max_y }) {
+                return false;
+            }
+        }
+        for i in 1..quick_samples {
+            let y = rect_min_y + (height * i as i32) / quick_samples as i32;
+            if !self.is_point_inside_by_ray_casting(Point { x: rect_min_x, y }) {
+                return false;
+            }
+            if !self.is_point_inside_by_ray_casting(Point { x: rect_max_x, y }) {
                 return false;
             }
         }
 
-        // Check left and right edges
-        for i in 1..samples {
-            let y = rect_min_y + (height * i as i32) / samples as i32;
-            if !self.point_in_or_on_polygon(Point { x: rect_min_x, y }) {
-                return false;
+        // If quick check passed, do thorough check for larger rectangles
+        let max_dim = width.max(height);
+        if max_dim > 10000 {
+            let samples = (max_dim / 1000) as usize;
+            for i in quick_samples..samples {
+                let x = rect_min_x + (width * i as i32) / samples as i32;
+                if !self.point_in_or_on_polygon(Point { x, y: rect_min_y }) {
+                    return false;
+                }
+                if !self.point_in_or_on_polygon(Point { x, y: rect_max_y }) {
+                    return false;
+                }
             }
-            if !self.point_in_or_on_polygon(Point { x: rect_max_x, y }) {
-                return false;
+            for i in quick_samples..samples {
+                let y = rect_min_y + (height * i as i32) / samples as i32;
+                if !self.point_in_or_on_polygon(Point { x: rect_min_x, y }) {
+                    return false;
+                }
+                if !self.point_in_or_on_polygon(Point { x: rect_max_x, y }) {
+                    return false;
+                }
             }
         }
 
@@ -262,25 +282,28 @@ pub fn part2() {
     let points: Vec<Point> = parse_input(&input);
     let polygon = Polygon::new(points.clone());
 
-    // Find the largest rectangle that is fully contained within the polygon.
-    let mut max_area: u64 = 0;
-
+    // Generate all candidate rectangles with their areas
+    let mut candidates: Vec<(Rect, u64)> = Vec::new();
     for i in 0..points.len() {
         for j in i + 1..points.len() {
             let p1 = points[i];
             let p2 = points[j];
-
             let rect = Rect { p1, p2 };
-
             let area = rect.area();
+            candidates.push((rect, area));
+        }
+    }
 
-            if area <= max_area {
-                continue;
-            }
+    // Sort by area descending - check largest first
+    candidates.sort_unstable_by(|a, b| b.1.cmp(&a.1));
 
-            if polygon.can_contain_rect(&rect) {
-                max_area = area;
-            }
+    // Find the largest contained rectangle
+    let mut max_area: u64 = 0;
+
+    for (rect, area) in candidates {
+        if polygon.can_contain_rect(&rect) {
+            max_area = area;
+            break; // Found the largest, exit early
         }
     }
 
