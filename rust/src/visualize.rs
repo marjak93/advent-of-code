@@ -18,14 +18,14 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{mpsc, RwLock};
 use tower_http::services::ServeDir;
-use year2025::day9::{get_polygon, part2_visualize, Point, Polygon, Rect};
+use year2025::day9::{get_polygon, Point, Polygon, Rect};
 
 // Messages from client to server
 #[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(tag = "type")]
 enum ClientMessage {
     #[serde(rename = "start")]
-    Start { speed: u64 },
+    Start { speed: u64, num_cores: usize },
     #[serde(rename = "pause")]
     Pause,
     #[serde(rename = "resume")]
@@ -41,12 +41,13 @@ enum ClientMessage {
 #[serde(tag = "type")]
 enum ServerMessage {
     #[serde(rename = "init")]
-    Init { polygon: PolygonData },
+    Init {
+        polygon: PolygonData,
+        max_cores: usize,
+    },
     #[serde(rename = "update")]
     Update {
-        rect: RectData,
-        area: u64,
-        is_contained: bool,
+        workers: Vec<WorkerUpdate>,
         current_best: u64,
         checked_count: usize,
     },
@@ -60,6 +61,14 @@ enum ServerMessage {
 struct PolygonData {
     edges: Vec<LineData>,
     bounding_box: (i32, i32, i32, i32),
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct WorkerUpdate {
+    worker_id: usize,
+    rect: RectData,
+    area: u64,
+    is_contained: bool,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -122,6 +131,7 @@ struct AlgorithmState {
     running: bool,
     paused: bool,
     speed: u64, // microseconds delay
+    num_cores: usize,
     stop_signal: Arc<RwLock<bool>>,
 }
 
@@ -131,6 +141,7 @@ impl AlgorithmState {
             running: false,
             paused: false,
             speed: 10000, // 10ms default - slow start
+            num_cores: 1,
             stop_signal: Arc::new(RwLock::new(false)),
         }
     }
@@ -146,11 +157,18 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
     let (mut sender, mut receiver) = socket.split();
     let (tx, mut rx) = mpsc::unbounded_channel::<ServerMessage>();
 
-    // Send initial polygon data
+    // Send initial polygon data with max available cores
+    let max_cores = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1);
     let init_msg = ServerMessage::Init {
         polygon: state.polygon.as_ref().into(),
+        max_cores,
     };
-    println!("[WS] Sending initial polygon data");
+    println!(
+        "[WS] Sending initial polygon data (max_cores: {})",
+        max_cores
+    );
     let _ = tx.send(init_msg);
 
     // Spawn task to send messages to client
@@ -196,7 +214,7 @@ async fn handle_client_message(
 ) {
     println!("[MSG] Received client message: {:?}", msg);
     match msg {
-        ClientMessage::Start { speed } => {
+        ClientMessage::Start { speed, num_cores } => {
             let mut alg_state = state.algorithm_state.write().await;
 
             if alg_state.running {
@@ -205,13 +223,14 @@ async fn handle_client_message(
             }
 
             println!(
-                "[MSG] Starting algorithm with speed: {} microseconds",
-                speed
+                "[MSG] Starting algorithm with speed: {} microseconds, num_cores: {}",
+                speed, num_cores
             );
             alg_state.running = true;
             alg_state.paused = false;
             alg_state.speed = speed;
-            *alg_state.stop_signal.write().await = false;
+            alg_state.num_cores = num_cores;
+            *alg_state.stop_signal.write().await = false; // Reset stop signal
 
             let status_msg = ServerMessage::Status {
                 running: true,
@@ -257,6 +276,7 @@ async fn handle_client_message(
             alg_state.running = false;
             alg_state.paused = false;
 
+            // Send a status update to confirm stop
             let status_msg = ServerMessage::Status {
                 running: false,
                 paused: false,
@@ -272,99 +292,240 @@ async fn handle_client_message(
 }
 
 async fn run_algorithm(
-    _polygon: Arc<Polygon>,
+    polygon: Arc<Polygon>,
     alg_state: Arc<RwLock<AlgorithmState>>,
     tx: mpsc::UnboundedSender<ServerMessage>,
 ) {
     println!("[ALG] Starting algorithm execution");
-    let mut checked_count = 0;
 
-    // Clone for the blocking task
-    let tx_clone = tx.clone();
-    let alg_state_clone = alg_state.clone();
+    let num_cores = alg_state.read().await.num_cores;
+    println!("[ALG] Using {} worker(s)", num_cores);
 
-    // Run the algorithm in a blocking task
-    let result = tokio::task::spawn_blocking(move || {
-        part2_visualize(|rect, area, is_contained, current_best| {
-            checked_count += 1;
+    // Get all candidates
+    let input = crate::util::get_input(2025, 9);
+    let points: Vec<Point> = year2025::day9::parse_input(&input);
 
-            // Check if we should stop - avoid holding lock too long
-            let should_stop = {
-                let state = alg_state_clone.blocking_read();
-                let stop_sig = state.stop_signal.blocking_read();
-                *stop_sig
-            };
+    // Generate all candidate rectangles
+    let mut candidates: Vec<(Rect, u64)> = Vec::new();
+    for i in 0..points.len() {
+        for j in i + 1..points.len() {
+            let p1 = points[i];
+            let p2 = points[j];
+            let rect = Rect { p1, p2 };
+            let area = rect.area();
+            candidates.push((rect, area));
+        }
+    }
 
-            if should_stop {
-                println!("[ALG] Stop signal received at count {}", checked_count);
-                return;
+    // Sort by area descending
+    candidates.sort_unstable_by(|a, b| b.1.cmp(&a.1));
+
+    println!("[ALG] Total candidates: {}", candidates.len());
+
+    // Distribute work evenly across workers by interleaving
+    // Instead of giving worker 0 the first chunk, worker 1 the second chunk, etc.
+    // Give worker 0 indices 0, num_cores, 2*num_cores, ...
+    // Give worker 1 indices 1, num_cores+1, 2*num_cores+1, ...
+    // This ensures each worker gets a mix of large and small rectangles
+    let candidates_arc = Arc::new(candidates);
+
+    // Shared state for batched updates
+    let total_checked = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let best_area_global = Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let worker_states = Arc::new(std::sync::Mutex::new(vec![
+        None::<(Rect, u64, bool)>;
+        num_cores
+    ]));
+
+    // Spawn update sender task that sends at 60fps
+    let tx_update = tx.clone();
+    let worker_states_clone = worker_states.clone();
+    let total_checked_clone = total_checked.clone();
+    let best_area_clone = best_area_global.clone();
+    let alg_state_update = alg_state.clone();
+
+    let update_handle = tokio::spawn(async move {
+        let frame_duration = Duration::from_micros(16667); // ~60fps
+        loop {
+            tokio::time::sleep(frame_duration).await;
+
+            // Check if algorithm is still running
+            let is_running = alg_state_update.read().await.running;
+            if !is_running {
+                break;
             }
 
-            // Wait while paused
-            loop {
-                let (is_paused, should_stop) = {
+            // Collect current worker states
+            let states = worker_states_clone.lock().unwrap().clone();
+            let mut workers = Vec::new();
+
+            for (worker_id, state) in states.iter().enumerate() {
+                if let Some((rect, area, is_contained)) = state {
+                    workers.push(WorkerUpdate {
+                        worker_id,
+                        rect: rect.into(),
+                        area: *area,
+                        is_contained: *is_contained,
+                    });
+                }
+            }
+
+            if !workers.is_empty() {
+                let update_msg = ServerMessage::Update {
+                    workers,
+                    current_best: best_area_clone.load(std::sync::atomic::Ordering::Relaxed),
+                    checked_count: total_checked_clone.load(std::sync::atomic::Ordering::Relaxed),
+                };
+                let _ = tx_update.send(update_msg);
+            }
+        }
+    });
+
+    let mut worker_handles = Vec::new();
+
+    for worker_id in 0..num_cores {
+        let alg_state_clone = alg_state.clone();
+        let polygon_clone = polygon.clone();
+        let candidates_clone = candidates_arc.clone();
+        let total_checked_clone = total_checked.clone();
+        let best_area_clone = best_area_global.clone();
+        let worker_states_clone = worker_states.clone();
+
+        let handle = tokio::task::spawn_blocking(move || {
+            // Process every num_cores-th element starting from worker_id
+            // Worker 0: 0, num_cores, 2*num_cores, ...
+            // Worker 1: 1, num_cores+1, 2*num_cores+1, ...
+            let mut idx = worker_id;
+            let total_candidates = candidates_clone.len();
+
+            println!(
+                "[Worker {}] Processing indices {}, {}, {}, ... (every {} indices)",
+                worker_id,
+                idx,
+                if idx + num_cores < total_candidates {
+                    idx + num_cores
+                } else {
+                    0
+                },
+                if idx + 2 * num_cores < total_candidates {
+                    idx + 2 * num_cores
+                } else {
+                    0
+                },
+                num_cores
+            );
+
+            while idx < total_candidates {
+                let (rect, area) = &candidates_clone[idx];
+
+                // Check if we should stop
+                let should_stop = {
                     let state = alg_state_clone.blocking_read();
                     let stop_sig = state.stop_signal.blocking_read();
-                    (state.paused, *stop_sig)
+                    *stop_sig
                 };
 
                 if should_stop {
-                    println!(
-                        "[ALG] Stop signal received while paused at count {}",
-                        checked_count
-                    );
+                    println!("[Worker {}] Stop signal received", worker_id);
                     return;
                 }
 
-                if !is_paused {
+                // Wait while paused
+                loop {
+                    let (is_paused, should_stop) = {
+                        let state = alg_state_clone.blocking_read();
+                        let stop_sig = state.stop_signal.blocking_read();
+                        (state.paused, *stop_sig)
+                    };
+
+                    if should_stop {
+                        println!("[Worker {}] Stop signal received while paused", worker_id);
+                        return;
+                    }
+
+                    if !is_paused {
+                        break;
+                    }
+
+                    std::thread::sleep(Duration::from_millis(50));
+                }
+
+                let is_contained = polygon_clone.can_contain_rect(rect);
+                total_checked_clone.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+                if is_contained {
+                    best_area_clone.fetch_max(*area, std::sync::atomic::Ordering::Relaxed);
+                }
+
+                // Update worker state for batched sending
+                {
+                    let mut states = worker_states_clone.lock().unwrap();
+                    states[worker_id] = Some((*rect, *area, is_contained));
+                }
+
+                // Apply speed control
+                let speed = alg_state_clone.blocking_read().speed;
+                if speed > 0 {
+                    std::thread::sleep(Duration::from_micros(speed));
+                }
+
+                // If we found a valid rectangle and it's the largest possible, we can stop
+                let current_best = best_area_clone.load(std::sync::atomic::Ordering::Relaxed);
+                if is_contained && current_best == *area {
+                    println!("[Worker {}] Found optimal solution: {}", worker_id, area);
                     break;
                 }
 
-                std::thread::sleep(Duration::from_millis(50));
+                // Move to next index for this worker
+                idx += num_cores;
             }
+        });
 
-            let update_msg = ServerMessage::Update {
-                rect: rect.into(),
-                area,
-                is_contained,
-                current_best,
-                checked_count,
-            };
-
-            let _ = tx_clone.send(update_msg);
-
-            // Apply speed control
-            let speed = alg_state_clone.blocking_read().speed;
-            if speed > 0 {
-                std::thread::sleep(Duration::from_micros(speed));
-            }
-        })
-    })
-    .await;
-
-    if let Ok(result) = result {
-        println!("[ALG] Algorithm completed with result: {}", result);
-        let complete_msg = ServerMessage::Complete {
-            result,
-            checked_count,
-        };
-        let _ = tx.send(complete_msg);
-
-        let mut alg_state = alg_state.write().await;
-        alg_state.running = false;
-        alg_state.paused = false;
-
-        let status_msg = ServerMessage::Status {
-            running: false,
-            paused: false,
-        };
-        let _ = tx.send(status_msg);
-    } else {
-        println!("[ALG] Algorithm task failed or was cancelled");
-        let mut alg_state = alg_state.write().await;
-        alg_state.running = false;
-        alg_state.paused = false;
+        worker_handles.push(handle);
     }
+
+    // Wait for all workers to complete
+    for (i, handle) in worker_handles.into_iter().enumerate() {
+        if let Err(e) = handle.await {
+            println!("[ALG] Worker {} failed: {:?}", i, e);
+        }
+    }
+
+    let final_result = best_area_global.load(std::sync::atomic::Ordering::Relaxed);
+    let final_checked = total_checked.load(std::sync::atomic::Ordering::Relaxed);
+
+    println!("[ALG] Algorithm completed with result: {}", final_result);
+
+    // First, set running to false so update task exits
+    {
+        let mut alg_state_write = alg_state.write().await;
+        alg_state_write.running = false;
+    }
+
+    // Wait for update task to finish before sending completion
+    println!("[ALG] Waiting for update task to finish...");
+    let _ = update_handle.await;
+    println!("[ALG] Update task finished");
+
+    // Now send completion message
+    let complete_msg = ServerMessage::Complete {
+        result: final_result,
+        checked_count: final_checked,
+    };
+    let _ = tx.send(complete_msg);
+
+    // Reset state for next run
+    let mut alg_state_write = alg_state.write().await;
+    alg_state_write.paused = false;
+    *alg_state_write.stop_signal.write().await = false; // Reset stop signal for next run
+
+    let status_msg = ServerMessage::Status {
+        running: false,
+        paused: false,
+    };
+    let _ = tx.send(status_msg);
+
+    println!("[ALG] Algorithm fully cleaned up and ready for next run");
 }
 
 #[tokio::main]

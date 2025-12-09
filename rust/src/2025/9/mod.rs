@@ -19,7 +19,7 @@ pub struct Polygon {
     pub edges: Vec<Line>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct Rect {
     pub p1: Point,
     pub p2: Point,

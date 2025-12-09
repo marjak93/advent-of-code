@@ -10,8 +10,8 @@
 <body>
     <div id="app">
         <div id="container">
-            <div id="canvas-container">
-                <canvas ref="canvas"></canvas>
+            <div id="canvas-container" ref="canvasContainer">
+                <!-- Canvases will be dynamically created -->
             </div>
 
             <div id="info">
@@ -26,14 +26,13 @@
                 </div>
 
                 <div class="stat">
-                    <div class="label">Current Rectangle</div>
-                    <div class="value">{{ currentArea.toLocaleString() }}</div>
-                    <div class="label" :class="currentStatusClass">{{ currentStatus }}</div>
+                    <div class="label">Best Area Found</div>
+                    <div class="value">{{ bestArea.toLocaleString() }}</div>
                 </div>
 
                 <div class="stat">
-                    <div class="label">Best Area Found</div>
-                    <div class="value">{{ bestArea.toLocaleString() }}</div>
+                    <div class="label">Render FPS</div>
+                    <div class="value">{{ fps }}</div>
                 </div>
 
                 <div id="controls">
@@ -50,14 +49,29 @@
                     </div>
 
                     <div class="control-group">
+                        <div class="control-label">Worker Cores</div>
+                        <input
+                            type="range"
+                            v-model.number="numCores"
+                            min="1"
+                            :max="maxCores"
+                            step="1"
+                            :disabled="isRunning"
+                        >
+                        <div class="speed-value">
+                            {{ numCores }} / {{ maxCores }} cores
+                        </div>
+                    </div>
+
+                    <div class="control-group">
                         <div class="control-label">Speed Control</div>
                         <input
                             type="range"
-                            v-model.number="speed"
+                            v-model.number="speedStep"
                             @input="setSpeed"
-                            min="20"
-                            max="1000"
-                            step="10"
+                            min="0"
+                            max="14"
+                            step="1"
                         >
                         <div class="speed-value">
                             {{ speedLabel }}
@@ -69,6 +83,16 @@
                 </div>
 
                 <div id="status" :class="statusClass">{{ statusMessage }}</div>
+
+                <div id="message-log">
+                    <div class="control-label">Message Log</div>
+                    <div id="log-container" ref="logContainer">
+                        <div v-for="(msg, index) in messageLog" :key="index" class="log-entry" :class="msg.type">
+                            <span class="log-time">{{ msg.time }}</span>
+                            <span class="log-content">{{ msg.content }}</span>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
