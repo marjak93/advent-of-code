@@ -1,4 +1,5 @@
 use crate::util::get_input;
+use rayon::prelude::*;
 
 #[derive(Copy, Clone, Debug)]
 struct Point {
@@ -297,15 +298,12 @@ pub fn part2() {
     // Sort by area descending - check largest first
     candidates.sort_unstable_by(|a, b| b.1.cmp(&a.1));
 
-    // Find the largest contained rectangle
-    let mut max_area: u64 = 0;
-
-    for (rect, area) in candidates {
-        if polygon.can_contain_rect(&rect) {
-            max_area = area;
-            break; // Found the largest, exit early
-        }
-    }
+    // Find the largest contained rectangle using parallel search
+    let max_area: u64 = candidates
+        .par_iter()
+        .find_first(|(rect, _area)| polygon.can_contain_rect(rect))
+        .map(|(_rect, area)| *area)
+        .unwrap_or(0);
 
     println!("Max contained area: {}", max_area);
 }
