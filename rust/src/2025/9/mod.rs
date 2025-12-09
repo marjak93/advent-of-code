@@ -283,20 +283,24 @@ pub fn part2() {
     let points: Vec<Point> = parse_input(&input);
     let polygon = Polygon::new(points.clone());
 
-    // Generate all candidate rectangles with their areas
-    let mut candidates: Vec<(Rect, u64)> = Vec::new();
-    for i in 0..points.len() {
-        for j in i + 1..points.len() {
-            let p1 = points[i];
-            let p2 = points[j];
-            let rect = Rect { p1, p2 };
-            let area = rect.area();
-            candidates.push((rect, area));
-        }
-    }
+    // Generate all candidate rectangles with their areas in parallel
+    let mut candidates: Vec<(Rect, u64)> = (0..points.len())
+        .into_par_iter()
+        .flat_map(|i| {
+            ((i + 1)..points.len())
+                .map(|j| {
+                    let p1 = points[i];
+                    let p2 = points[j];
+                    let rect = Rect { p1, p2 };
+                    let area = rect.area();
+                    (rect, area)
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect();
 
-    // Sort by area descending - check largest first
-    candidates.sort_unstable_by(|a, b| b.1.cmp(&a.1));
+    // Sort by area descending - check largest first (parallel sort)
+    candidates.par_sort_unstable_by(|a, b| b.1.cmp(&a.1));
 
     // Find the largest contained rectangle using parallel search
     let max_area: u64 = candidates

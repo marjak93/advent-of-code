@@ -67,6 +67,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create mod.rs with boilerplate
     let mod_content = format!(
         r#"use crate::util::get_input;
+use rayon::prelude::*;
 
 #[allow(unused_variables)]
 pub fn part1() {{
